@@ -53,6 +53,10 @@ Para desinstalar, apague esse arquivo.
   Nunca um `compose up` às cegas.
 - **a** sobe com argumentos (ex.: `--teste`). O leme lembra para a próxima vez.
 - **r** reinicia. **PgUp/PgDn** rolam a saída, **End** volta ao fim.
+- **Mouse:** a roda sobre a saída rola o log (sobre a lista, troca o item); clique na lista escolhe;
+  **arrastar sobre a saída seleciona linhas só daquele painel** e, ao soltar, copia para a área de
+  transferência. A seleção nativa do terminal (que atravessa as duas colunas) continua no
+  **Shift+arrastar**.
 - Um processo que escreveu erro enquanto você olhava outro ganha um **!** vermelho na lista.
 - **q** sai e para tudo o que o leme subiu (os contêineres continuam).
 

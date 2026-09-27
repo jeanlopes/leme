@@ -7,8 +7,9 @@
  * Nada aqui espera a rede nem o Docker para aparecer: a lista vem dos package.json (disco), e
  * git, compose, contêineres e portas vão chegando em segundo plano.
  */
-import { emitKeypressEvents } from 'node:readline';
+import { copiar } from './copiar';
 import { linhasDoXterm } from './desenho';
+import { lerEntrada, type Mouse, type Tecla } from './entrada';
 import { descobrirProjetos, lerCompose, portasUsadas, type Projeto, type Servico } from './descoberta';
 import { Conteiner, garantirNoAr, lerDocker } from './docker';
 import { lerGit, type EstadoGit } from './git';
@@ -89,6 +90,10 @@ export async function abrirPainel(raiz: string): Promise<void> {
   let saindo = false;
   let anterior: string[] = [];
   let digitando: { item: Processo; texto: string } | null = null;
+  // seleção de linhas no painel da saída (arrastar com o mouse): linhas do histórico do xterm
+  let selecao: { item: Item; ancora: number; ponta: number; arrastou: boolean } | null = null;
+  // o que foi desenhado na lista (o clique precisa saber que item está em cada linha)
+  let layout: { lista: Linha[]; inicio: number; alturaLista: number } = { lista: [], inicio: 0, alturaLista: 0 };
 
   const avisar = (m: string) => {
     mensagem = m;
@@ -173,7 +178,16 @@ export async function abrirPainel(raiz: string): Promise<void> {
     if (item instanceof Conteiner && !item.rodando && item.xt.buffer.active.length <= 1) {
       return dica([cinza(item.existe ? 'Parado. Enter liga o contêiner.' : `Não existe. Enter cria (docker compose up -d ${item.servico.servico}, em ${item.servico.projeto}).`)]);
     }
-    return linhasDoXterm(item.xt, cols, rows, rolagem.get(item) ?? 0);
+    const linhas = linhasDoXterm(item.xt, cols, rows, rolagem.get(item) ?? 0);
+    if (selecao?.item !== item) return linhas;
+    const topo = topoDaSaida(item);
+    const [de, ate] = [Math.min(selecao.ancora, selecao.ponta), Math.max(selecao.ancora, selecao.ponta)];
+    return linhas.map((l, i) => (topo + i >= de && topo + i <= ate ? '\x1b[7m' + l.replace(/\x1b\[0m/g, '\x1b[0m\x1b[7m') + '\x1b[0m' : l));
+  }
+
+  /** A linha do histórico do xterm que está no topo do painel (a rolagem conta de baixo para cima). */
+  function topoDaSaida(item: Item): number {
+    return Math.max(0, item.xt.buffer.active.baseY - (rolagem.get(item) ?? 0));
   }
 
   function rodapeDeTeclas(): string {
@@ -188,6 +202,7 @@ export async function abrirPainel(raiz: string): Promise<void> {
       k('a', 'argumentos'),
       k('r', 'reiniciar'),
       k('PgUp/PgDn', 'rolar'),
+      k('mouse', 'roda rola · arrastar copia'),
       k('q', 'sair'),
     ].join('   ');
   }
@@ -200,12 +215,15 @@ export async function abrirPainel(raiz: string): Promise<void> {
 
     const quadro: string[] = [];
     const msg = Date.now() < mensagemAte ? '   ' + amarelo(mensagem) : '';
-    quadro.push(ajustar(` ${negrito('leme')} ${cinza('·')} ${raiz}${msg}`, cols));
+    // o aviso não pode sumir atrás de um caminho longo: o caminho encolhe
+    const caminho = cortar(raiz, Math.max(10, cols - 12 - largura(msg)));
+    quadro.push(ajustar(` ${negrito('leme')} ${cinza('·')} ${caminho}${msg}`, cols));
 
     const lista = linhasDaLista();
     const alturaLista = rows - 4;
     const idxSel = lista.findIndex((l) => l.item === item);
     const inicio = Math.max(0, Math.min(idxSel - Math.floor(alturaLista / 2), lista.length - alturaLista));
+    layout = { lista, inicio, alturaLista };
     const saida = item ? conteudoDaSaida(item) : [];
     const rol = item ? (rolagem.get(item) ?? 0) : 0;
 
@@ -308,8 +326,12 @@ export async function abrirPainel(raiz: string): Promise<void> {
 
   // ---------- terminal ----------
 
+  // mouse: ?1000 cliques, ?1002 arrastar, ?1006 formato SGR (coordenadas sem limite de 223)
+  const MOUSE_LIGA = '\x1b[?1000h\x1b[?1002h\x1b[?1006h';
+  const MOUSE_DESLIGA = '\x1b[?1000l\x1b[?1002l\x1b[?1006l';
+
   function restaurar(): void {
-    process.stdout.write('\x1b[?25h\x1b[?1049l');
+    process.stdout.write(MOUSE_DESLIGA + '\x1b[?25h\x1b[?1049l');
     if (process.stdin.isTTY) process.stdin.setRawMode(false);
   }
   process.on('uncaughtException', (e) => {
@@ -319,29 +341,22 @@ export async function abrirPainel(raiz: string): Promise<void> {
     process.exit(1);
   });
 
-  type Tecla = { name?: string; ctrl?: boolean; meta?: boolean; sequence?: string };
-
-  function teclaDigitando(s: string | undefined, k: Tecla): void {
+  function teclaDigitando(t: Tecla): void {
     const d = digitando!;
-    if (k.name === 'escape') digitando = null;
-    else if (k.name === 'return') {
+    if (t.nome === 'escape') digitando = null;
+    else if (t.nome === 'return') {
       digitando = null;
       void d.item.reiniciar(d.texto.trim());
-    } else if (k.name === 'backspace') d.texto = d.texto.slice(0, -1);
-    else if (s && !k.ctrl && !k.meta && s.length === 1 && s >= ' ') d.texto += s;
+    } else if (t.nome === 'backspace') d.texto = d.texto.slice(0, -1);
+    else if (t.texto && !t.ctrl) d.texto += t.texto;
     pedirDesenho();
   }
 
-  process.stdout.write('\x1b[?1049h\x1b[?25l\x1b[2J');
-  emitKeypressEvents(process.stdin);
-  process.stdin.setRawMode(true);
-  process.stdin.resume();
-  process.stdin.on('keypress', (s: string | undefined, k: Tecla) => {
-    if (!k) return;
-    if (k.ctrl && k.name === 'c') return void sair();
-    if (digitando) return teclaDigitando(s, k);
+  function tecla(t: Tecla): void {
+    if (t.ctrl && t.nome === 'c') return void sair();
+    if (digitando) return teclaDigitando(t);
     const item = selecionado();
-    switch (k.name) {
+    switch (t.nome) {
       case 'q':
         return void sair();
       case 'up':
@@ -357,6 +372,7 @@ export async function abrirPainel(raiz: string): Promise<void> {
         return pedirDesenho();
       case 'escape':
         marcados.clear();
+        selecao = null;
         return pedirDesenho();
       case 'a':
         if (item instanceof Processo) digitando = { item, texto: item.args };
@@ -375,6 +391,61 @@ export async function abrirPainel(raiz: string): Promise<void> {
         if (item) rolagem.set(item, 0);
         return pedirDesenho();
     }
+  }
+
+  /**
+   * Mouse. A tela: linha 1 cabeçalho, 2 borda, 3… conteúdo, penúltima borda, última teclas;
+   * a lista ocupa as colunas 2…esquerda-1 e a saída esquerda+2…cols-1 (coordenadas a partir de 1).
+   * Roda: sobre a saída rola o log, sobre a lista troca o item. Clique na lista escolhe. Arrastar
+   * sobre a saída seleciona linhas SÓ dela e, ao soltar, copia para a área de transferência.
+   */
+  function mouse(m: Mouse): void {
+    const linha = m.y - 3;
+    const naSaida = m.x > geo.esquerda;
+    const item = selecionado();
+    if (m.acao === 'roda') return naSaida ? rolar(3 * m.delta) : escolher(-m.delta);
+    if (m.acao === 'apertar') {
+      selecao = null;
+      if (linha < 0 || linha >= layout.alturaLista) return pedirDesenho();
+      if (!naSaida) {
+        const alvo = layout.lista[layout.inicio + linha]?.item;
+        if (alvo) {
+          sel = itens.indexOf(alvo);
+          if (alvo instanceof Conteiner) alvo.seguirLogs();
+        }
+      } else if (item) {
+        const abs = topoDaSaida(item) + linha;
+        selecao = { item, ancora: abs, ponta: abs, arrastou: false };
+      }
+      return pedirDesenho();
+    }
+    if (!selecao || selecao.item !== item || !item) return;
+    // arrastando para fora da borda de cima/baixo, o log rola junto
+    if (linha < 0) rolar(1);
+    else if (linha >= layout.alturaLista) rolar(-1);
+    const dentro = Math.max(0, Math.min(layout.alturaLista - 1, linha));
+    selecao.ponta = topoDaSaida(item) + dentro;
+    if (m.acao === 'arrastar') selecao.arrastou = true;
+    // clique simples (sem arrastar) não copia nada: só limpa
+    if (m.acao === 'soltar' && !selecao.arrastou) selecao = null;
+    else if (m.acao === 'soltar') {
+      const [de, ate] = [Math.min(selecao.ancora, selecao.ponta), Math.max(selecao.ancora, selecao.ponta)];
+      const b = item.xt.buffer.active;
+      const texto = Array.from({ length: ate - de + 1 }, (_, i) => b.getLine(de + i)?.translateToString(true) ?? '').join('\n').replace(/\n+$/, '');
+      if (texto.trim()) {
+        copiar(texto);
+        avisar(`${ate - de + 1} linha(s) copiada(s)`);
+      } else selecao = null;
+    }
+    pedirDesenho();
+  }
+
+  process.stdout.write('\x1b[?1049h\x1b[?25l\x1b[2J' + MOUSE_LIGA);
+  process.stdin.setRawMode(true);
+  process.stdin.setEncoding('utf8');
+  process.stdin.resume();
+  process.stdin.on('data', (dados: string) => {
+    for (const ev of lerEntrada(dados)) ev.tipo === 'tecla' ? tecla(ev) : mouse(ev);
   });
   process.stdout.on('resize', () => {
     geo = geometria();

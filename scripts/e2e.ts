@@ -20,7 +20,7 @@ const ROWS = 36;
 const xt = new Xterm({ cols: COLS, rows: ROWS, allowProposedApi: true });
 const p = Bun.spawn(['bun', resolve(import.meta.dir, '..', 'src', 'main.ts')], {
   cwd: pasta,
-  env: { ...process.env, LEME_ESTADO: join(tmpdir(), `leme-e2e-${process.pid}.json`) },
+  env: { ...process.env, LEME_ESTADO: join(tmpdir(), `leme-e2e-${process.pid}.json`), LEME_CLIPBOARD: 'off' },
   terminal: { cols: COLS, rows: ROWS, data: (_t, d) => xt.write(d) },
 });
 
