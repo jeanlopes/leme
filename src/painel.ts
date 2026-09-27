@@ -278,7 +278,7 @@ export async function abrirPainel(raiz: string): Promise<void> {
   }
 
   async function sair(): Promise<void> {
-    if (saindo) process.exit(1); // segundo Ctrl+C: sai sem esperar
+    if (saindo) process.exit(1); // segundo q enquanto para: sai sem esperar
     saindo = true;
     const rodando = procs.filter((p) => p.rodando);
     if (rodando.length) {
@@ -334,6 +334,7 @@ export async function abrirPainel(raiz: string): Promise<void> {
     process.stdout.write(MOUSE_DESLIGA + '\x1b[?25h\x1b[?1049l');
     if (process.stdin.isTTY) process.stdin.setRawMode(false);
   }
+  process.on('SIGINT', () => avisar('Ctrl+C não sai: para sair, aperte q'));
   process.on('uncaughtException', (e) => {
     for (const p of procs) if (p.rodando) void p.parar();
     restaurar();
@@ -352,8 +353,31 @@ export async function abrirPainel(raiz: string): Promise<void> {
     pedirDesenho();
   }
 
+  /** Ctrl+C copia de novo o que estiver selecionado; sem seleção, lembra que sair é o q. */
+  function ctrlC(): void {
+    const sel = textoSelecionado();
+    if (sel) {
+      copiar(sel.texto);
+      return avisar(`${sel.linhas} linha(s) copiada(s) — para sair, aperte q`);
+    }
+    avisar('Ctrl+C não sai: para sair, aperte q (arrastar sobre a saída já copia)');
+  }
+
+  /** O texto das linhas selecionadas no painel da saída (do item que está na tela), ou null. */
+  function textoSelecionado(): { texto: string; linhas: number } | null {
+    const item = selecionado();
+    if (!selecao || !item || selecao.item !== item) return null;
+    const [de, ate] = [Math.min(selecao.ancora, selecao.ponta), Math.max(selecao.ancora, selecao.ponta)];
+    const b = item.xt.buffer.active;
+    const texto = Array.from({ length: ate - de + 1 }, (_, i) => b.getLine(de + i)?.translateToString(true) ?? '')
+      .join('\n')
+      .replace(/\n+$/, '');
+    return texto.trim() ? { texto, linhas: ate - de + 1 } : null;
+  }
+
   function tecla(t: Tecla): void {
-    if (t.ctrl && t.nome === 'c') return void sair();
+    // Ctrl+C NÃO sai (pedido do dono: o hábito de copiar derrubava tudo) — só o q sai
+    if (t.ctrl && t.nome === 'c') return ctrlC();
     if (digitando) return teclaDigitando(t);
     const item = selecionado();
     switch (t.nome) {
@@ -429,12 +453,10 @@ export async function abrirPainel(raiz: string): Promise<void> {
     // clique simples (sem arrastar) não copia nada: só limpa
     if (m.acao === 'soltar' && !selecao.arrastou) selecao = null;
     else if (m.acao === 'soltar') {
-      const [de, ate] = [Math.min(selecao.ancora, selecao.ponta), Math.max(selecao.ancora, selecao.ponta)];
-      const b = item.xt.buffer.active;
-      const texto = Array.from({ length: ate - de + 1 }, (_, i) => b.getLine(de + i)?.translateToString(true) ?? '').join('\n').replace(/\n+$/, '');
-      if (texto.trim()) {
-        copiar(texto);
-        avisar(`${ate - de + 1} linha(s) copiada(s)`);
+      const sel = textoSelecionado();
+      if (sel) {
+        copiar(sel.texto);
+        avisar(`${sel.linhas} linha(s) copiada(s)`);
       } else selecao = null;
     }
     pedirDesenho();

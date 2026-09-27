@@ -59,6 +59,8 @@ Para desinstalar, apague esse arquivo.
   **Shift+arrastar**.
 - Um processo que escreveu erro enquanto você olhava outro ganha um **!** vermelho na lista.
 - **q** sai e para tudo o que o leme subiu (os contêineres continuam).
+- **Ctrl+C não sai** (o hábito de copiar derrubava tudo): com linhas selecionadas, copia de novo;
+  sem seleção, só lembra que sair é o **q**. Um segundo **q** enquanto ele para os processos força a saída.
 
 Fora de um terminal interativo (saída redirecionada), o leme só imprime o que descobriu e sai.
 
