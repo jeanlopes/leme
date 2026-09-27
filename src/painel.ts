@@ -107,6 +107,7 @@ export async function abrirPainel(raiz: string): Promise<void> {
     if (p.portas.length) extra.push(cinza(p.portas.map((x) => `:${x}`).join(' ')));
     if (e === 'caiu' && p.codigo !== null) extra.push(vermelho(`(${p.codigo})`));
     if (p.temErro && !escolhido) extra.push(vermelho('!'));
+    if (p.def.descricao) extra.push(cinza(p.def.descricao)); // por último: é o que o corte come
     return `  ${marca}${SIMBOLO[e]} ${p.def.nome} ${extra.join(' ')}`;
   }
 
@@ -158,7 +159,16 @@ export async function abrirPainel(raiz: string): Promise<void> {
     const { cols, rows } = geo.saida;
     const dica = (linhas: string[]) => Array.from({ length: rows }, (_, i) => ajustar(i >= 1 && i - 1 < linhas.length ? '  ' + linhas[i - 1] : '', cols));
     if (item instanceof Processo && !item.jaRodou && !item.portaRespondendo) {
-      return dica([cinza('Parado.'), '', `Enter sobe:  ${item.comando}`, cinza(`em ${item.def.cwd}`), '', cinza('a  sobe com argumentos (ex.: --teste) — o leme lembra para a próxima vez')]);
+      return dica([
+        ...(item.def.descricao ? [negrito(item.def.descricao), ''] : []),
+        cinza('Parado.'),
+        '',
+        `Enter sobe:  ${item.comando}`,
+        cinza(`em ${item.def.cwd}`),
+        '',
+        cinza('a  sobe com argumentos (ex.: --teste) — o leme lembra para a próxima vez'),
+        ...(item.def.descricao ? [] : ['', cinza('Sem descrição. Ponha uma em "scripts-info" no package.json: { "scripts-info": { "' + item.def.script + '": "…" } }')]),
+      ]);
     }
     if (item instanceof Conteiner && !item.rodando && item.xt.buffer.active.length <= 1) {
       return dica([cinza(item.existe ? 'Parado. Enter liga o contêiner.' : `Não existe. Enter cria (docker compose up -d ${item.servico.servico}, em ${item.servico.projeto}).`)]);

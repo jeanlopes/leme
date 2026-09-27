@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { descobrirProjetos, ehScriptDeDev, portasDaSaida, portasDeBanco, portasUsadas, servicosDoCompose } from '../src/descoberta';
+import { arquivoDoComando, descobrirProjetos, ehScriptDeDev, portasDaSaida, portasDeBanco, portasUsadas, primeiraLinhaDoCabecalho, servicosDoCompose } from '../src/descoberta';
 import { lerDotenv } from '../src/dotenv';
 
 const base = mkdtempSync(join(tmpdir(), 'leme-'));
@@ -74,7 +74,22 @@ describe('descobrirProjetos', () => {
   test('monorepo sem dev na raiz: os dev dos workspaces, rodando na pasta deles', () => {
     const mono = descobrirProjetos(raiz)[1]!;
     expect(mono.gerente).toBe('pnpm');
-    expect(mono.processos).toEqual([{ projeto: 'mono', nome: 'apps/web · dev', script: 'dev', cwd: join(raiz, 'mono', 'apps', 'web'), gerente: 'pnpm' }]);
+    expect(mono.processos).toEqual([{ projeto: 'mono', nome: 'apps/web · dev', script: 'dev', cwd: join(raiz, 'mono', 'apps', 'web'), gerente: 'pnpm', descricao: undefined }]);
+  });
+
+  test('descrição: scripts-info do package.json; senão, o cabeçalho do arquivo que o script roda', () => {
+    const p = join(base, 'descr');
+    escrever(
+      join(p, 'site', 'package.json'),
+      JSON.stringify({
+        scripts: { dev: 'vite', 'dev:tudo': 'bun scripts/tudo.ts --x', 'dev:velho': 'node scripts/velho.js', 'dev:nada': 'bun run --cwd x dev' },
+        'scripts-info': { dev: 'só a web', 'dev:velho': 42 },
+      }),
+    );
+    escrever(join(p, 'site', 'scripts', 'tudo.ts'), '#!/usr/bin/env bun\n/**\n * `bun run dev:tudo` — sobe tudo de uma vez.\n *\n * detalhes\n */\n');
+    escrever(join(p, 'site', 'scripts', 'velho.js'), '// liga o servidor antigo\n// segunda linha\nrequire("x")\n');
+    const d = Object.fromEntries(descobrirProjetos(p)[0]!.processos.map((x) => [x.script, x.descricao]));
+    expect(d).toEqual({ dev: 'só a web', 'dev:tudo': 'sobe tudo de uma vez.', 'dev:velho': 'liga o servidor antigo', 'dev:nada': undefined });
   });
 
   test('rodando dentro de um projeto só: ele mesmo', () => {
@@ -99,6 +114,22 @@ test('servicosDoCompose: contêiner, portas publicadas e profiles', () => {
     ['teste', 'app-db-test', [3307], ['test']],
     ['fila', 'app-fila-1', [], []],
   ]);
+});
+
+test.each([
+  ['bun scripts/dev-tudo.ts', 'scripts/dev-tudo.ts'],
+  ['bun run scripts/x.mjs --teste', 'scripts/x.mjs'],
+  ['node --experimental-strip-types scripts/ensure-env.ts && next dev', 'scripts/ensure-env.ts'],
+  ['tsx src/main.tsx', 'src/main.tsx'],
+  ["bun run --filter './apps/*' dev", null],
+  ['bun run --cwd apps/web dev', null],
+  ['vite', null],
+])('arquivoDoComando(%s)', (cmd, esperado) => expect(arquivoDoComando(cmd)).toBe(esperado));
+
+test('primeiraLinhaDoCabecalho', () => {
+  expect(primeiraLinhaDoCabecalho('/**\n * `bun run dev:multi` — testar a colaboração À MÃO.\n */')).toBe('testar a colaboração À MÃO.');
+  expect(primeiraLinhaDoCabecalho('/* liga tudo */\ncodigo()')).toBe('liga tudo');
+  expect(primeiraLinhaDoCabecalho('import x from "y";\n/** tarde demais */')).toBeUndefined();
 });
 
 test('portasDaSaida: o endereço que vite/next/astro anunciam', () => {

@@ -33,10 +33,11 @@ export async function imprimirResumo(raiz: string): Promise<void> {
         const lem = lembrar(d.cwd, d.script);
         const no = lem.portas?.length ? (await Promise.all(lem.portas.map(portaEmUso))).some(Boolean) : null;
         const portas = lem.portas?.length ? cinza(lem.portas.map((x) => `:${x}`).join(' ')) : '';
-        return `${no ? verde('●') : cinza('○')} ${d.nome}${lem.args ? ' ' + ciano(lem.args) : ''}${portas ? ' ' + portas : ''}`;
+        return `${no ? verde('●') : cinza('○')} ${d.nome}${lem.args ? ' ' + ciano(lem.args) : ''}${portas ? ' ' + portas : ''}${d.descricao ? cinza('  — ' + d.descricao) : ''}`;
       }),
     );
-    l.push(`  processos:  ${procs.length ? procs.join('   ') : cinza('nenhum script de dev')}`);
+    if (!procs.length) l.push(`  processos:  ${cinza('nenhum script de dev')}`);
+    for (const p of procs) l.push(`  ${p}`);
     const usadas = portasUsadas(p).map((porta) => {
       const s = todos.find((x) => x.portas.includes(porta));
       return s ? `${porta} → ${s.container} ${estadoDe(s.container)}` : amarelo(`${porta} → nenhum contêiner declara`);
