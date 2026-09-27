@@ -1,25 +1,29 @@
 # leme
 
-Painel de terminal para uma pasta com vários projetos. Digite `leme` e ele mostra, para cada
-projeto: a branch, o que está preparado para commit e o que não está, se a branch já entrou na
-principal, o PR e o último CI. Tudo pelo menu — setas, Enter, Esc. Nada para decorar.
+Painel de terminal para uma pasta com vários projetos. Digite `leme` na pasta e ele mostra, numa
+tela só, tudo o que dá para subir — e a saída de cada um, ao vivo. Sem configuração: ele lê o que
+os projetos já declaram.
 
 ```
-leme · C:\workspace\batuvia-org
-
-  PASTA            BRANCH                          ALTERAÇÕES        MESCLADA    CI          PR
-
-Batuvia/batuvia   main: Release ✓ há 11 h · CI ✗ há 11 h   ·   buscado do remoto há 1 min
-  batuvia          plano-020-backoffice ↓5         3 novos           ✓ na main   ✓ há 11 h   #99 mesclado
-  batuvia-021      plano-021-preco-por-regiao      limpo             não         ✓ há 11 h   #100 mesclado
-
-⚠ Batuvia/batuvia: o CI da main está FALHANDO (CI)
-⚠ batuvia-021: o PR #100 foi mesclado em "plano-020-backoffice", mas o conteúdo NÃO está na main
+ leme · C:\workspace\minha-org
+┌─ PROCESSOS ─────────────────────────┐┌─ loja · web:dev ─ bun run web:dev ─ no ar :5173 ───────┐
+│loja main                            ││  VITE v6.4.3  ready in 659 ms                           │
+│    2 alterados · ↑1                 ││                                                         │
+│   ○ dev                             ││  ➜  Local:   http://localhost:5173/                     │
+│   ● web:dev :5173                   ││                                                         │
+│   ✗ api:dev :3333 (1)               ││                                                         │
+│pagamentos plano-12                  ││                                                         │
+│  ◆○ dev                             ││                                                         │
+│docker                               ││                                                         │
+│   ● mariadb :3306                   ││                                                         │
+│   ○ redis :6379                     ││                                                         │
+└─────────────────────────────────────┘└─────────────────────────────────────────────────────────┘
+ ↑↓ escolher   Enter subir/parar   Espaço marcar   a argumentos   r reiniciar   PgUp/PgDn rolar   q sair
 ```
 
 ## Instalar
 
-Precisa de [bun](https://bun.sh), git e, para CI e PR, o [gh](https://cli.github.com) logado.
+Precisa de [bun](https://bun.sh) (1.3+), git e, para os contêineres, Docker.
 
 ```powershell
 cd C:\workspace\leme
@@ -30,52 +34,50 @@ bun run instalar
 O `instalar` cria `~/.bun/bin/leme.ps1` apontando para este código — editou, vale na hora.
 Para desinstalar, apague esse arquivo.
 
+## O que ele descobre sozinho
+
+| o que aparece | de onde vem |
+|---|---|
+| projetos | subpastas com `package.json` (ou a própria pasta, se for um projeto) |
+| processos | os scripts de dev do `package.json`: `dev`, `dev:*`, `*:dev`. Monorepo sem nenhum na raiz: os dos workspaces |
+| git | branch, preparado / alterado / novo, à frente / atrás do remoto |
+| contêineres | o `docker-compose.yml` de cada projeto (`docker compose config`, todos os profiles) |
+| bancos que cada projeto usa | as connection strings **locais** dos `.env` (o `.env.example` vale como padrão, o `.env` por cima). Só a porta é lida; hosts remotos e endereços `http`/`ws` ficam de fora |
+| portas de cada processo | o endereço que o próprio processo anuncia na saída (`Local: http://localhost:5173`), lembrado para a próxima vez |
+
 ## Usar
 
-Em qualquer pasta que tenha projetos com git dentro: `leme`.
+- **Enter** sobe ou para o escolhido — ou todos os marcados com **Espaço**, em paralelo.
+- Antes de subir, o leme confere os contêineres dos bancos que o projeto usa: rodando, nada;
+  parado, `docker start`; inexistente, `docker compose up -d <serviço>` na pasta de quem o declara.
+  Nunca um `compose up` às cegas.
+- **a** sobe com argumentos (ex.: `--teste`). O leme lembra para a próxima vez.
+- **r** reinicia. **PgUp/PgDn** rolam a saída, **End** volta ao fim.
+- Um processo que escreveu erro enquanto você olhava outro ganha um **!** vermelho na lista.
+- **q** sai e para tudo o que o leme subiu (os contêineres continuam).
 
-- **Ver detalhes de um projeto** — arquivos alterados (preparados, não preparados, novos),
-  commits ainda não enviados, últimos commits, PR e cada workflow do CI com o link.
-- **Buscar do remoto** — `git fetch` em cada repositório. O painel NÃO busca sozinho: a coluna
-  "mesclada" compara com o que o git sabia no último fetch (o cabeçalho de cada repositório diz
-  quando foi).
-- **Atualizar a tela** — lê tudo de novo.
+Fora de um terminal interativo (saída redirecionada), o leme só imprime o que descobriu e sai.
 
-Worktrees do mesmo repositório aparecem juntos. Pastas sem git aparecem numa linha no fim.
-Fora de um terminal interativo (saída redirecionada), o leme só imprime o resumo e sai.
-
-## `.leme.json` (opcional)
-
-Na pasta dos projetos. O leme procura esse arquivo subindo a partir de onde você está, então
-`leme` dentro de `projeto/src` ainda mostra a pasta inteira.
-
-```json
-{
-  "gh": { "conta": "jeanlopes" },
-  "git": { "autor": "jeanlopes" },
-  "ignorar": ["pasta-de-backup"]
-}
-```
-
-- `gh.conta` — a conta do gh usada nas consultas. Cada chamada leva o token dela, então funciona
-  mesmo com outra conta ativa no gh.
-- `git.autor` — avisa quando algum projeto commitaria com outro `user.name`.
-- `ignorar` — pastas que não aparecem.
+A memória do leme (portas vistas, argumentos usados) fica em `%LOCALAPPDATA%\leme\estado.json`
+(`~/.local/state/leme/` fora do Windows) — nunca dentro dos projetos.
 
 ## O código
 
 | arquivo | o que faz |
 |---|---|
-| `src/main.ts` | entrada: acha a pasta, abre o menu (ou imprime o resumo) |
-| `src/menu.ts` | o menu (`@clack/prompts`) |
-| `src/coleta.ts` | junta git + CI + PR de cada pasta e monta os avisos |
-| `src/git.ts` | lê o estado git de uma pasta (só leitura) |
-| `src/github.ts` | CI e PR pelo `gh` |
-| `src/tela.ts` | transforma o estado em texto |
-| `src/config.ts` | `.leme.json` |
-| `src/sh.ts` | roda comandos |
+| `src/main.ts` | entrada: abre a tela (ou imprime o resumo) |
+| `src/painel.ts` | a tela: lista, saída, teclas |
+| `src/descoberta.ts` | projetos, scripts, compose, bancos dos `.env` |
+| `src/processo.ts` | um processo num terminal próprio (PTY) — subir, parar a árvore, porta |
+| `src/docker.ts` | contêineres: estado, logs, garantir no ar |
+| `src/desenho.ts` | a tela guardada do processo → linhas coloridas do painel |
+| `src/git.ts` | estado git de uma pasta (só leitura) |
+| `src/github.ts` | CI e PR pelo `gh` (entra na tela na fase C) |
+| `src/estado.ts` | a memória do leme |
+| `src/tela.ts`, `src/dotenv.ts`, `src/sh.ts` | texto, `.env`, rodar comandos |
 
-`bun test` roda os testes; `bun run typecheck`, os tipos.
+`bun test` roda os testes; `bun run typecheck`, os tipos. `scripts/e2e.ts` testa a tela de
+verdade: roda o leme num terminal falso, manda teclas e fotografa (instruções no topo do arquivo).
 
-Dependência: `@clack/prompts` (MIT) e o que ela puxa (`@clack/core`, `sisteransi`,
-`fast-wrap-ansi`, `fast-string-width`, `fast-string-truncated-width` — todos MIT).
+Dependência: `@xterm/headless` (MIT, sem dependências) — o terminal "invisível" que guarda a saída
+de cada processo.

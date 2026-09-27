@@ -3,8 +3,7 @@
  * `docker`) volta como `ok: false` com a mensagem em `erro`.
  *
  * `stdin: 'ignore'` de propósito: um git/ssh pedindo senha aqui dentro travaria o painel em
- * silêncio. Sem stdin ele falha na hora. O que PODE pedir senha (ex.: `git fetch`) roda com
- * `rodarNaTela`, que mostra tudo no terminal.
+ * silêncio. Sem stdin ele falha na hora.
  */
 export type Resultado = { ok: boolean; codigo: number; saida: string; erro: string };
 
@@ -25,15 +24,5 @@ export async function rodar(
     return { ok: codigo === 0, codigo, saida, erro };
   } catch (e) {
     return { ok: false, codigo: -1, saida: '', erro: String(e) };
-  }
-}
-
-/** Roda um comando ligado ao terminal (entrada, saída e erro à vista). Devolve o código de saída. */
-export async function rodarNaTela(cmd: string, args: string[], cwd: string): Promise<number> {
-  try {
-    const p = Bun.spawn([cmd, ...args], { cwd, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' });
-    return await p.exited;
-  } catch {
-    return -1;
   }
 }
