@@ -1,0 +1,26 @@
+{
+  "name": "leme",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Painel de terminal para uma pasta com vários projetos: branch, alterações, CI — e, depois, subir e descer ambientes.",
+  "type": "module",
+  "bin": {
+    "leme": "src/main.ts"
+  },
+  "scripts": {
+    "leme": "bun src/main.ts",
+    "instalar": "bun scripts/instalar.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "bun": ">=1.2"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^5.6.3"
+  }
+}
