@@ -18,7 +18,7 @@ os projetos já declaram.
 │   ● mariadb :3306                   ││                                                         │
 │   ○ redis :6379                     ││                                                         │
 └─────────────────────────────────────┘└─────────────────────────────────────────────────────────┘
- ↑↓ escolher   Enter subir/parar   Espaço marcar   a argumentos   r reiniciar   PgUp/PgDn rolar   q sair
+ ↑↓ escolher   Enter subir/parar   Espaço marcar   a argumentos   r reiniciar   d diagnóstico   q sair
 ```
 
 ## Instalar
@@ -57,6 +57,14 @@ Para desinstalar, apague esse arquivo.
   **arrastar sobre a saída seleciona linhas só daquele painel** e, ao soltar, copia para a área de
   transferência. A seleção nativa do terminal (que atravessa as duas colunas) continua no
   **Shift+arrastar**.
+- **d** copia um **diagnóstico** de tudo para a área de transferência, em Markdown, pronto para
+  colar num chat ou numa issue (sem print, sem selecionar log). Vai nele: quando/onde/sistema, o que
+  estava na tela, **pontos de atenção** (o que caiu, porta ocupada por outro programa, banco do
+  `.env` que ninguém atende), git de cada projeto (branch, arquivos alterados, último commit) e,
+  de cada processo, estado, comando, portas e as últimas 80 linhas da saída; dos contêineres,
+  estado e as últimas 40 linhas de `docker logs`. Nenhum valor de `.env` entra (só as portas) e
+  senhas/tokens que apareceram nas saídas viram `***` — é uma rede de proteção, não uma garantia:
+  confira antes de compartilhar.
 - Um processo que escreveu erro enquanto você olhava outro ganha um **!** vermelho na lista.
 - **q** sai e para tudo o que o leme subiu (os contêineres continuam).
 - **Ctrl+C não sai** (o hábito de copiar derrubava tudo): com linhas selecionadas, copia de novo;
@@ -77,6 +85,7 @@ A memória do leme (portas vistas, argumentos usados) fica em `%LOCALAPPDATA%\le
 | `src/processo.ts` | um processo num terminal próprio (PTY) — subir, parar a árvore, porta |
 | `src/docker.ts` | contêineres: estado, logs, garantir no ar |
 | `src/desenho.ts` | a tela guardada do processo → linhas coloridas do painel |
+| `src/diagnostico.ts` | o retrato em Markdown que a tecla `d` copia (e a máscara de senhas) |
 | `src/git.ts` | estado git de uma pasta (só leitura) |
 | `src/github.ts` | CI e PR pelo `gh` (entra na tela na fase C) |
 | `src/estado.ts` | a memória do leme |

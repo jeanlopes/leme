@@ -2,13 +2,14 @@
  * A tela do leme: lista de processos à esquerda, saída do escolhido à direita, teclas embaixo.
  *
  *   ↑↓ escolhe · Enter sobe/para (os marcados, se houver) · Espaço marca · a argumentos
- *   r reinicia · PgUp/PgDn rolam a saída · q sai (e para tudo o que o leme subiu)
+ *   r reinicia · d copia o diagnóstico · PgUp/PgDn rolam a saída · q sai (e para tudo o que o leme subiu)
  *
  * Nada aqui espera a rede nem o Docker para aparecer: a lista vem dos package.json (disco), e
  * git, compose, contêineres e portas vão chegando em segundo plano.
  */
 import { copiar } from './copiar';
 import { linhasDoXterm } from './desenho';
+import { diagnosticar } from './diagnostico';
 import { lerEntrada, type Mouse, type Tecla } from './entrada';
 import { descobrirProjetos, lerCompose, portasUsadas, type Projeto, type Servico } from './descoberta';
 import { Conteiner, garantirNoAr, lerDocker } from './docker';
@@ -88,6 +89,7 @@ export async function abrirPainel(raiz: string): Promise<void> {
   let mensagem = '';
   let mensagemAte = 0;
   let saindo = false;
+  let diagnosticando = false;
   let anterior: string[] = [];
   let digitando: { item: Processo; texto: string } | null = null;
   // seleção de linhas no painel da saída (arrastar com o mouse): linhas do histórico do xterm
@@ -195,15 +197,17 @@ export async function abrirPainel(raiz: string): Promise<void> {
       return ` ${negrito(`argumentos para ${digitando.item.def.script}:`)} ${digitando.texto}${'\x1b[7m \x1b[0m'}   ${cinza('Enter sobe · Esc cancela')}`;
     }
     const k = (t: string, o: string) => `${negrito(t)} ${cinza(o)}`;
+    // o que importa primeiro: num terminal estreito é o fim que o corte come
     return ' ' + [
       k('↑↓', 'escolher'),
       k('Enter', marcados.size ? `subir/parar os ${marcados.size} marcados` : 'subir/parar'),
       k('Espaço', 'marcar'),
       k('a', 'argumentos'),
       k('r', 'reiniciar'),
+      k('d', 'diagnóstico'),
+      k('q', 'sair'),
       k('PgUp/PgDn', 'rolar'),
       k('mouse', 'roda rola · arrastar copia'),
-      k('q', 'sair'),
     ].join('   ');
   }
 
@@ -277,6 +281,22 @@ export async function abrirPainel(raiz: string): Promise<void> {
     pedirDesenho();
   }
 
+  /** `d`: copia um retrato de tudo o que o painel vê (ver diagnostico.ts). */
+  async function copiarDiagnostico(): Promise<void> {
+    if (diagnosticando) return;
+    diagnosticando = true;
+    avisar('montando o diagnóstico…');
+    try {
+      const d = await diagnosticar({ raiz, cols: geo.cols, rows: geo.rows, projetos, git, procs, conts, naTela: selecionado()?.titulo ?? null });
+      copiar(d.texto);
+      avisar(`diagnóstico copiado (${d.linhas} linhas, ${d.kb} KB)`);
+    } catch (e) {
+      avisar(`diagnóstico falhou: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      diagnosticando = false;
+    }
+  }
+
   async function sair(): Promise<void> {
     if (saindo) process.exit(1); // segundo q enquanto para: sai sem esperar
     saindo = true;
@@ -334,7 +354,7 @@ export async function abrirPainel(raiz: string): Promise<void> {
     process.stdout.write(MOUSE_DESLIGA + '\x1b[?25h\x1b[?1049l');
     if (process.stdin.isTTY) process.stdin.setRawMode(false);
   }
-  process.on('SIGINT', () => avisar('Ctrl+C não sai: para sair, aperte q'));
+  process.on('SIGINT', () => avisar('Ctrl+C não sai: q sai · d copia o diagnóstico'));
   process.on('uncaughtException', (e) => {
     for (const p of procs) if (p.rodando) void p.parar();
     restaurar();
@@ -360,7 +380,7 @@ export async function abrirPainel(raiz: string): Promise<void> {
       copiar(sel.texto);
       return avisar(`${sel.linhas} linha(s) copiada(s) — para sair, aperte q`);
     }
-    avisar('Ctrl+C não sai: para sair, aperte q (arrastar sobre a saída já copia)');
+    avisar('Ctrl+C não sai: q sai · d copia o diagnóstico · arrastar copia o log');
   }
 
   /** O texto das linhas selecionadas no painel da saída (do item que está na tela), ou null. */
@@ -401,6 +421,8 @@ export async function abrirPainel(raiz: string): Promise<void> {
       case 'a':
         if (item instanceof Processo) digitando = { item, texto: item.args };
         return pedirDesenho();
+      case 'd':
+        return void copiarDiagnostico();
       case 'r':
         if (item instanceof Processo) void item.reiniciar();
         if (item instanceof Conteiner && item.rodando) avisar('contêiner: Enter desliga, Enter de novo liga');
