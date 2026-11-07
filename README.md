@@ -75,12 +75,27 @@ Fora de um terminal interativo (saída redirecionada), o leme só imprime o que 
 A memória do leme (portas vistas, argumentos usados) fica em `%LOCALAPPDATA%\leme\estado.json`
 (`~/.local/state/leme/` fora do Windows) — nunca dentro dos projetos.
 
+## Migrações pendentes
+
+Antes de subir **qualquer** script de um projeto (e depois de o banco estar no ar), o leme pergunta ao projeto se o banco
+dele está em dia. Quem diz é um script `db:pendentes` no `package.json` (na raiz ou em `apps/*`/`packages/*`, junto de um
+`db:migrate`) que **só lê** e responde `--json` com `{ banco, estado, pendentes[] }`; código de saída 0 em dia · 2 pendente ·
+3 banco inacessível. Projeto sem o script não é incomodado.
+
+Com pendência, o rodapé pergunta `s` / `n` (Enter e Esc = não). Sim: roda `db:backup` (se o projeto tiver), depois `db:migrate`,
+confere de novo e sobe o script. Não: avisa no log e sobe assim mesmo. Falha no backup ou na migração: o script **não** sobe.
+
+- Só se oferece migrar banco da própria máquina (`localhost`, `127.0.0.1`…). Banco remoto: só avisa.
+- `dev:teste` e `dev:tudo -- --teste` usam um banco de teste e migram sozinhos: o leme pula a conferência neles.
+- Vários scripts subindo juntos (marcados + Enter): as conferências entram numa fila (uma pergunta por vez, em todo o painel). Depois de um **sim** os seguintes já acham o banco em dia; depois de um **não**, o próximo script do mesmo projeto pergunta de novo.
+
 ## O código
 
 | arquivo | o que faz |
 |---|---|
 | `src/main.ts` | entrada: abre a tela (ou imprime o resumo) |
 | `src/painel.ts` | a tela: lista, saída, teclas |
+| `src/migracoes.ts` | confere migrações pendentes antes de subir (`db:pendentes`) e oferece rodá-las |
 | `src/descoberta.ts` | projetos, scripts, compose, bancos dos `.env` |
 | `src/processo.ts` | um processo num terminal próprio (PTY) — subir, parar a árvore, porta |
 | `src/docker.ts` | contêineres: estado, logs, garantir no ar |
