@@ -11,8 +11,9 @@ import { copiar } from './copiar';
 import { linhasDoXterm } from './desenho';
 import { diagnosticar } from './diagnostico';
 import { lerEntrada, type Mouse, type Tecla } from './entrada';
-import { descobrirProjetos, lerCompose, portasUsadas, type Projeto, type Servico } from './descoberta';
+import { descobrirProjetos, lerCompose, portasUsadas, type DefProcesso, type Projeto, type Servico } from './descoberta';
 import { Conteiner, garantirNoAr, lerDocker } from './docker';
+import { acharAlvo, comFila, conferirMigracoes, pulaConferencia } from './migracoes';
 import { lerGit, type EstadoGit } from './git';
 import { portaEmUso, Processo, type Estado, type Item, type Tamanho } from './processo';
 import { ajustar, amarelo, ciano, cinza, cortar, largura, negrito, resumoGit, verde, vermelho } from './tela';
@@ -66,7 +67,7 @@ export async function abrirPainel(raiz: string): Promise<void> {
   const composePronto: Promise<Servico[][]> = Promise.all(projetos.map(lerCompose));
 
   /** Os contêineres que um projeto usa: os das portas locais dos .env dele + os do compose dele (sem profile). */
-  async function prepararProjeto(p: Projeto, escrever: (t: string) => void): Promise<boolean> {
+  async function prepararProjeto(p: Projeto, def: DefProcesso, args: string, escrever: (t: string) => void): Promise<boolean> {
     const porProjeto = await composePronto;
     const todos = semRepetir(porProjeto.flat());
     const precisa: Servico[] = [];
@@ -76,10 +77,19 @@ export async function abrirPainel(raiz: string): Promise<void> {
       else if (!(await portaEmUso(porta))) escrever(`\x1b[33m[leme] o .env de ${p.nome} usa a porta ${porta}, mas nada responde nela e nenhum compose da pasta declara um contêiner nela.\x1b[0m\n`);
     }
     precisa.push(...(porProjeto[projetos.indexOf(p)] ?? []).filter((s) => !s.profiles.length));
-    return garantirNoAr(semRepetir(precisa), escrever);
+    if (!(await garantirNoAr(semRepetir(precisa), escrever))) return false;
+    // migrações: depois do banco no ar, antes do script; uma conferência por vez por projeto
+    if (pulaConferencia(def.script, args)) {
+      escrever(`\x1b[90m[leme] ${def.nome} usa banco de teste e migra sozinho — pulei a conferência de migrações.\x1b[0m\n`);
+      return true;
+    }
+    const alvo = acharAlvo(p.pasta, p.gerente);
+    if (!alvo) return true;
+    if (!filaDeMigracao.has(p)) filaDeMigracao.set(p, comFila<boolean>());
+    return filaDeMigracao.get(p)!(() => conferirMigracoes(alvo, escrever, perguntar));
   }
 
-  const procs = projetos.flatMap((p) => p.processos.map((d) => new Processo(d, geo.saida, pedirDesenho, (esc) => prepararProjeto(p, esc))));
+  const procs = projetos.flatMap((p) => p.processos.map((d) => new Processo(d, geo.saida, pedirDesenho, (esc, args) => prepararProjeto(p, d, args, esc))));
   let conts: Conteiner[] = [];
   let itens: Item[] = [...procs];
   const git = new Map<string, EstadoGit>();
@@ -92,6 +102,14 @@ export async function abrirPainel(raiz: string): Promise<void> {
   let diagnosticando = false;
   let anterior: string[] = [];
   let digitando: { item: Processo; texto: string } | null = null;
+  // pergunta de sim/não no rodapé (migração pendente); só uma por vez — a fila por projeto garante
+  let perguntando: { texto: string; resolver: (sim: boolean) => void } | null = null;
+  const filaDeMigracao = new Map<Projeto, ReturnType<typeof comFila<boolean>>>();
+  const perguntar = (texto: string): Promise<boolean> =>
+    new Promise((resolver) => {
+      perguntando = { texto, resolver };
+      pedirDesenho();
+    });
   // seleção de linhas no painel da saída (arrastar com o mouse): linhas do histórico do xterm
   let selecao: { item: Item; ancora: number; ponta: number; arrastou: boolean } | null = null;
   // o que foi desenhado na lista (o clique precisa saber que item está em cada linha)
@@ -193,6 +211,7 @@ export async function abrirPainel(raiz: string): Promise<void> {
   }
 
   function rodapeDeTeclas(): string {
+    if (perguntando) return ` ${amarelo(perguntando.texto)}   ${negrito('s')} ${cinza('sim')}   ${negrito('n')} ${cinza('não (Enter/Esc também)')}`;
     if (digitando) {
       return ` ${negrito(`argumentos para ${digitando.item.def.script}:`)} ${digitando.texto}${'\x1b[7m \x1b[0m'}   ${cinza('Enter sobe · Esc cancela')}`;
     }
@@ -396,6 +415,17 @@ export async function abrirPainel(raiz: string): Promise<void> {
   }
 
   function tecla(t: Tecla): void {
+    if (perguntando && !(t.ctrl && t.nome === 'c')) {
+      const sim = t.nome === 's' || t.nome === 'y';
+      const nao = t.nome === 'n' || t.nome === 'return' || t.nome === 'escape';
+      if (sim || nao) {
+        const { resolver } = perguntando;
+        perguntando = null;
+        resolver(sim);
+        pedirDesenho();
+      }
+      return; // enquanto pergunta, nenhuma outra tecla age
+    }
     // Ctrl+C NÃO sai (pedido do dono: o hábito de copiar derrubava tudo) — só o q sai
     if (t.ctrl && t.nome === 'c') return ctrlC();
     if (digitando) return teclaDigitando(t);

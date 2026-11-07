@@ -87,8 +87,8 @@ export class Processo implements Item {
     readonly def: DefProcesso,
     tamanho: Tamanho,
     private readonly mudou: () => void,
-    /** Antes de subir (conferir os bancos do projeto). false = não sobe. */
-    private readonly preparar: (escrever: (t: string) => void) => Promise<boolean>,
+    /** Antes de subir (conferir os bancos do projeto). `args` são os argumentos com que vai subir. false = não sobe. */
+    private readonly preparar: (escrever: (t: string) => void, args: string) => Promise<boolean>,
   ) {
     this.xt = novoXterm(tamanho);
     const l = lembrar(def.cwd, def.script);
@@ -158,7 +158,7 @@ export class Processo implements Item {
     this.temErro = false;
     this.estado = 'preparando';
     this.escrever(`\n`);
-    const pronto = await this.preparar(this.escrever);
+    const pronto = await this.preparar(this.escrever, this.args);
     if (this.geracao !== geracao) return; // parado no meio
     if (!pronto) {
       this.estado = 'caiu';
