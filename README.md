@@ -87,7 +87,7 @@ confere de novo e sobe o script. Não: avisa no log e sobe assim mesmo. Falha no
 
 - Só se oferece migrar banco da própria máquina (`localhost`, `127.0.0.1`…). Banco remoto: só avisa.
 - `dev:teste` e `dev:tudo -- --teste` usam um banco de teste e migram sozinhos: o leme pula a conferência neles.
-- Vários scripts subindo juntos (marcados + Enter): uma conferência por vez por projeto — a pergunta não se repete.
+- Vários scripts subindo juntos (marcados + Enter): as conferências entram numa fila (uma pergunta por vez, em todo o painel). Depois de um **sim** os seguintes já acham o banco em dia; depois de um **não**, o próximo script do mesmo projeto pergunta de novo.
 
 ## O código
 

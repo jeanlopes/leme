@@ -85,8 +85,7 @@ export async function abrirPainel(raiz: string): Promise<void> {
     }
     const alvo = acharAlvo(p.pasta, p.gerente);
     if (!alvo) return true;
-    if (!filaDeMigracao.has(p)) filaDeMigracao.set(p, comFila<boolean>());
-    return filaDeMigracao.get(p)!(() => conferirMigracoes(alvo, escrever, perguntar));
+    return filaDeMigracao(() => conferirMigracoes(alvo, escrever, perguntar));
   }
 
   const procs = projetos.flatMap((p) => p.processos.map((d) => new Processo(d, geo.saida, pedirDesenho, (esc, args) => prepararProjeto(p, d, args, esc))));
@@ -102,9 +101,10 @@ export async function abrirPainel(raiz: string): Promise<void> {
   let diagnosticando = false;
   let anterior: string[] = [];
   let digitando: { item: Processo; texto: string } | null = null;
-  // pergunta de sim/não no rodapé (migração pendente); só uma por vez — a fila por projeto garante
+  // pergunta de sim/não no rodapé (migração pendente). O rodapé tem UM lugar só: por isso a fila de conferências é
+  // GLOBAL (todos os projetos), não por projeto — duas perguntas ao mesmo tempo deixariam a primeira sem resposta.
   let perguntando: { texto: string; resolver: (sim: boolean) => void } | null = null;
-  const filaDeMigracao = new Map<Projeto, ReturnType<typeof comFila<boolean>>>();
+  const filaDeMigracao = comFila<boolean>();
   const perguntar = (texto: string): Promise<boolean> =>
     new Promise((resolver) => {
       perguntando = { texto, resolver };
